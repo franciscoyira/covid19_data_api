@@ -24,7 +24,7 @@ cur = conn.cursor()
 
 cur.execute('''
             CREATE TABLE IF NOT EXISTS Countries
-            (name TEXT, slug TEXT, iso2 TEXT)''')
+            (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, iso2 TEXT, last_updated DATETIME)''')
 
 insert_query = '''
 INSERT INTO Countries
