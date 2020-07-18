@@ -5,7 +5,7 @@ import ssl
 import sqlite3
 from datetime import datetime, timedelta
 
-base_url = "https://api.covid19api.com/country/"
+base_url = "https://api.covid19api.com/total/country/"
 
 # What this script will do:
 # 1. Load the slugs for all the countries, and the date in which they were last updated
@@ -40,93 +40,107 @@ for row in cur:
     slugs.append(str(row[1]))
     last_updates.append(str(row[2]))
 
-# Run loop of queries
-
-# Test case: Chile
-
-# Get ID from Chile
-cur.execute('''SELECT id 
-FROM Countries
-WHERE name = 'Chile' 
-''')
-py_id = cur.fetchone()[0] -1
-
-# Get yesterday date in format for URL
+# Get yesterday date in format for URLs
 yesterday = datetime.today() - timedelta(days=1)
 yesterday_str = yesterday.strftime("%Y-%m-%d") + 'T00:00:00Z'
 
+# Run loop of queries
+# General case (for all the countries)
+for i in range(len(countries_id)):
+    # Country_ID is countries_id[i]
+    # ID in Python is i    
 
-# Create URL 
-if last_updates[py_id] is None:
-    request_url_confirmed = base_url + slugs[py_id] + '/status/confirmed?from=' + '2020-03-01T00:00:00Z' + '&to=' + yesterday_str
-else:
-    request_url_confirmed = base_url + slugs[py_id] + '/status/confirmed?from=' + last_updates[py_id] + 'T00:00:00Z' + '&to=' + yesterday_str
+    print(slugs[i])
 
-# Create URL variations for recovered and deaths
-request_url_deaths = request_url_confirmed.replace('confirmed', 'deaths')
-request_url_recovered = request_url_confirmed.replace('confirmed', 'recovered')
+    # Create URL 
+    if last_updates[i] == 'None':
+        request_url_confirmed = base_url + slugs[i] + '/status/confirmed?from=' + '2020-01-01T00:00:00Z' + '&to=' + yesterday_str
+        print('case1')
+    # This condition checks if there is new data available
+    elif datetime.strptime(last_updates[0], '%Y-%m-%d') > yesterday:
+        request_url_confirmed = base_url + slugs[i] + '/status/confirmed?from=' + last_updates[i] + 'T00:00:00Z' + '&to=' + yesterday_str
+        print('case2')
+    else:
+        print('case3')
+        continue
 
-# Retrieve data using the request URLs
-# Confirmed
-conn_confirmed = urlopen(request_url_confirmed, context=ctx)
-data_confirmed = conn_confirmed.read().decode()
-js_confirmed = json.loads(data_confirmed)
+    # Create URL variations for recovered and deaths
+    request_url_deaths = request_url_confirmed.replace('confirmed', 'deaths')
+    request_url_recovered = request_url_confirmed.replace('confirmed', 'recovered')
 
-# Process data and save it in lists
-dates = list()
-confirmed = list()
+    # Retrieve data using the request URLs
+    # Confirmed
+    print(request_url_confirmed)
+    try:
+        conn_confirmed = urlopen(request_url_confirmed, context=ctx)
+        data_confirmed = conn_confirmed.read().decode()
+    except:
+        print('Failed to retrieve data from URL')
+        continue
+    
+    js_confirmed = json.loads(data_confirmed)
 
-for element in js_confirmed:
-    dates.append(element['Date'][:10])
-    confirmed.append(int(element['Cases']))
+    # Check remaining requests 
+    headers = dict(conn_confirmed.getheaders())
+    print('Requesting data. Remaining', headers['X-Ratelimit-Remaining'])
 
-# Deaths
-conn_deaths = urlopen(request_url_deaths, context=ctx)
-data_deaths = conn_deaths.read().decode()
-js_deaths = json.loads(data_deaths)
+    # Process data and save it in lists
+    dates = list()
+    confirmed = list()
 
-deaths = list()
+    for element in js_confirmed:
+        dates.append(element['Date'][:10])
+        confirmed.append(int(element['Cases']))
 
-for element in js_deaths:
-    deaths.append(int(element['Cases']))
+    # Deaths
+    conn_deaths = urlopen(request_url_deaths, context=ctx)
+    data_deaths = conn_deaths.read().decode()
+    js_deaths = json.loads(data_deaths)
 
-# Recovered
-conn_recovered = urlopen(request_url_recovered, context=ctx)
-data_recovered = conn_recovered.read().decode()
-js_recovered = json.loads(data_recovered)
+    deaths = list()
 
-recovered = list()
+    for element in js_deaths:
+        deaths.append(int(element['Cases']))
 
-for element in js_recovered:
-    recovered.append(int(element['Cases']))
+    # Recovered
+    conn_recovered = urlopen(request_url_recovered, context=ctx)
+    data_recovered = conn_recovered.read().decode()
+    js_recovered = json.loads(data_recovered)
 
-# Create tuples to insert in DB
-#  (country_id, datetime, confirmed, recovered, deaths)
+    recovered = list()
 
-to_insert = list()
-for i in range(len(dates)):
-    t = (py_id+1, dates[i], confirmed[i], recovered[i], deaths[i])
-    to_insert.append(t)
+    for element in js_recovered:
+        recovered.append(int(element['Cases']))
 
-# Query to insert values
-insert_query = '''
-INSERT INTO Cases
-(country_id, datetime, confirmed, recovered, deaths)
-VALUES (?, ?, ?, ?, ?)'''
+    # Create tuples to insert in DB
+    #  (country_id, datetime, confirmed, recovered, deaths)
 
-cur.executemany(insert_query, to_insert)
+    to_insert = list()
+    for j in range(len(dates)):
+        t = (countries_id[i], dates[j], confirmed[j], recovered[j], deaths[j])
+        to_insert.append(t)
 
-# Update 'last_updated' field in Countries table
-# Get today's date
-today_str = datetime.today().strftime("%Y-%m-%d") + 'T00:00:00Z'
-country_id = py_id + 1
+    # Query to insert values
+    insert_query = '''
+    INSERT INTO Cases
+    (country_id, datetime, confirmed, recovered, deaths)
+    VALUES (?, ?, ?, ?, ?)'''
 
-cur.execute(
-    '''UPDATE Countries
-    SET last_updated = ?
-    WHERE id = ?''',
-    (today_str, country_id))
+    cur.executemany(insert_query, to_insert)
 
+    # Update 'last_updated' field in Countries table
+    # Get today's date
+    today_str = datetime.today().strftime("%Y-%m-%d") 
 
-conn.commit()
+    cur.execute(
+        '''UPDATE Countries
+        SET last_updated = ?
+        WHERE id = ?''',
+        (today_str, countries_id[i]))
+
+    conn.commit()
+    
 cur.close()
+
+# TODO: omit countries for which we have all available data.
+# TODO: print intermediate messages to know the status of the requests
