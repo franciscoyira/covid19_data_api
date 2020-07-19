@@ -77,7 +77,7 @@ for i in range(len(countries_id)):
     except:
         print('Failed to retrieve data from URL')
         continue
-    
+
     js_confirmed = json.loads(data_confirmed)
 
     # Check remaining requests 
@@ -140,7 +140,19 @@ for i in range(len(countries_id)):
 
     conn.commit()
     
-cur.close()
+cur.execute('''
+DELETE FROM New_Cases''')
 
-# TODO: omit countries for which we have all available data.
-# TODO: print intermediate messages to know the status of the requests
+cur.execute('''
+INSERT INTO New_Cases 
+SELECT
+  Cases.*
+  ,IFNULL((Cases.confirmed - LAG(Cases.confirmed) OVER(PARTITION BY country_id ORDER BY datetime)), 0) AS new_cases
+  ,IFNULL((Cases.recovered - LAG(Cases.recovered) OVER(PARTITION BY country_id ORDER BY datetime)), 0) AS new_recovered
+  ,IFNULL((Cases.deaths - LAG(Cases.deaths) OVER(PARTITION BY country_id ORDER BY datetime)), 0) AS new_deaths
+FROM Cases
+ORDER BY country_id, datetime;
+''')
+
+conn.commit()
+cur.close()
