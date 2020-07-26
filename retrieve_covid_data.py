@@ -57,7 +57,7 @@ for i in range(len(countries_id)):
         request_url_confirmed = base_url + slugs[i] + '/status/confirmed?from=' + '2020-01-01T00:00:00Z' + '&to=' + yesterday_str
         print('case1')
     # This condition checks if there is new data available
-    elif datetime.strptime(last_updates[0], '%Y-%m-%d') > yesterday:
+    elif datetime.strptime(last_updates[0], '%Y-%m-%d') < yesterday:
         request_url_confirmed = base_url + slugs[i] + '/status/confirmed?from=' + last_updates[i] + 'T00:00:00Z' + '&to=' + yesterday_str
         print('case2')
     else:
